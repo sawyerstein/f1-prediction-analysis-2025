@@ -2,6 +2,8 @@
 
 An independent data analysis project examining the accuracy of Formula 1 predictions across the 2025 season using R, statistical testing, and data visualization.
 
+![Prediction Accuracy with 95% Confidence Intervals](prediction-accuracy-confidence-intervals.png)
+
 ## Project Overview
 
 This project analyzes Formula 1 predictions to determine which types of predictions were most accurate and what factors were associated with prediction success.
