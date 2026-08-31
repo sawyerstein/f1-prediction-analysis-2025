@@ -31,6 +31,18 @@ The project included:
 - Permutation testing
 - Data visualization with ggplot2
 
+## My Contributions
+
+I independently developed this project from analysis through presentation, including:
+
+- Cleaning and transforming Formula 1 prediction data in R
+- Designing statistical analyses to evaluate prediction accuracy
+- Investigating patterns across drivers, teams, and prediction types
+- Creating data visualizations to communicate key findings
+- Developing and testing the "Lando Norris jinx" analysis
+- Translating statistical results into an engaging Formula 1 story
+- Presenting findings to peers, university sports conferences, and alumni working professionally in Formula 1
+
 ## Tools
 
 - R
