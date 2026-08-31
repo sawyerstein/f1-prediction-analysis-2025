@@ -1,0 +1,293 @@
+---
+By: "Sawyer Stein"
+Date: "2-20-2026"
+---
+
+``` {r}
+library(tidyverse)
+library(ggplot2)
+library(readr)
+bonafide_predictions <- read_csv("bonafide_predictions.csv", show_col_types = FALSE)
+```
+
+
+```{r}
+df_raw <- read.csv("bonafide_predictions.csv", check.names = FALSE)
+table(df_raw$`Race Winner Accuracy`, useNA = "ifany")
+unique(df_raw$`Race Winner Accuracy`)
+sum(is.na(df_raw$`Race Winner Accuracy`))
+df <- df_raw %>%
+  mutate(across(matches("Accuracy", ignore.case = TRUE),
+                ~ {
+                  x <- trimws(tolower(as.character(.)))
+                  case_when(
+                    str_detect(x, "^yes\\b") ~ 1,
+                    str_detect(x, "^no\\b")  ~ 0,
+                    x %in% c("1", "true", "t", "y") ~ 1,
+                    x %in% c("0", "false", "f", "n") ~ 0,
+                    TRUE ~ NA_real_
+                  )
+                }))
+acc <- df %>% select(matches("Accuracy", ignore.case = TRUE))
+unique(unlist(acc))
+sum(!is.na(unlist(acc)))
+table(df$`Race Winner Accuracy`, useNA="ifany")
+```
+```{r}
+df_raw <- read.csv("bonafide_predictions.csv", check.names = FALSE)
+
+df <- df_raw %>%
+  mutate(across(matches("Accuracy", ignore.case = TRUE),
+                ~ na_if(trimws(as.character(.)), ""))) %>%   # convert blanks "" to NA
+  mutate(across(matches("Accuracy", ignore.case = TRUE),
+                ~ {
+                  x <- tolower(.)
+                  case_when(
+                    x == "yes" ~ 1,
+                    x == "no"  ~ 0,
+                    TRUE ~ NA_real_
+                  )
+                }))
+acc <- df %>% select(matches("Accuracy", ignore.case = TRUE))
+sum(!is.na(unlist(acc)))         # should be > 0 (you got 89)
+unique(unlist(acc))              # should show 0,1,NA
+```
+
+```{r}
+overall_accuracy <- mean(unlist(acc), na.rm = TRUE)
+
+ggplot(data.frame(Metric = "Overall Accuracy", Accuracy = overall_accuracy),
+       aes(x = Metric, y = Accuracy)) +
+  geom_col() +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Overall Prediction Accuracy", x = "", y = "Accuracy Rate") +
+  theme_minimal()
+```
+
+```{r}
+accuracy_long <- df %>%
+  select(matches("Accuracy", ignore.case = TRUE)) %>%
+  pivot_longer(everything(), names_to = "Prediction_Type", values_to = "Accuracy") %>%
+  filter(!is.na(Accuracy))
+
+accuracy_summary <- accuracy_long %>%
+  group_by(Prediction_Type) %>%
+  summarise(mean_accuracy = mean(Accuracy),
+            n = n(),
+            .groups = "drop") %>%
+  arrange(mean_accuracy)
+
+ggplot(accuracy_summary,
+       aes(x = reorder(Prediction_Type, mean_accuracy), y = mean_accuracy)) +
+  geom_col() +
+  coord_flip() +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Accuracy by Prediction Type",
+       subtitle = "Dashed line = 50% chance benchmark",
+       x = "Prediction Type",
+       y = "Mean Accuracy") +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_blank(),
+  axis.ticks.x = element_blank()
+)
+```
+
+```{r}
+coverage <- df %>%
+  select(matches("Accuracy", ignore.case = TRUE)) %>%
+  pivot_longer(everything(), names_to = "Prediction_Type", values_to = "Accuracy") %>%
+  summarise() %>% {NULL}
+# easier:
+coverage <- df %>%
+  select(matches("Accuracy", ignore.case = TRUE)) %>%
+  pivot_longer(everything(), names_to="Prediction_Type", values_to="Accuracy") %>%
+  group_by(Prediction_Type) %>%
+  summarise(n_filled = sum(!is.na(Accuracy)), .groups="drop") %>%
+  arrange(n_filled)
+
+ggplot(coverage, aes(x = reorder(Prediction_Type, n_filled), y = n_filled)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "How Often Each Prediction Type Was Used",
+       x = "Prediction Type",
+       y = "Number of Non-Missing Accuracy Entries") +
+  theme_minimal()
+```
+```{r}
+accuracy_ci <- df %>%
+  select(matches("Accuracy", ignore.case = TRUE)) %>%
+  pivot_longer(everything(),
+               names_to = "Prediction_Type",
+               values_to = "Accuracy") %>%
+  filter(!is.na(Accuracy)) %>%
+  group_by(Prediction_Type) %>%
+  summarise(
+    mean_accuracy = mean(Accuracy),
+    n = n(),
+    se = sqrt(mean_accuracy * (1 - mean_accuracy) / n),
+    lower = pmax(0, mean_accuracy - 1.96 * se),
+    upper = pmin(1, mean_accuracy + 1.96 * se),
+    .groups = "drop"
+  ) %>%
+  arrange(mean_accuracy)
+accuracy_ci <- accuracy_ci %>%
+  mutate(Prediction_Type = Prediction_Type %>%
+           str_remove(" Accuracy") %>%
+           str_replace_all("Driver", "Drv") %>%
+           str_replace_all("Team", "Tm") %>%
+           str_replace_all("Second", "2nd") %>%
+           str_replace_all("Third", "3rd") %>%
+           str_replace_all("Points", "Pts") %>%
+           str_replace_all("Podium", "Pod") %>%
+           str_replace_all("Finish", "Fin") %>%
+           str_replace_all("Non-Teammate", "Non-TM") %>%
+           str_replace_all("Teammate", "TM") %>%
+           str_squish())
+ggplot(accuracy_ci,
+       aes(x = reorder(Prediction_Type, mean_accuracy),
+           y = mean_accuracy)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_flip() +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Prediction Accuracy by Type (95% CI)",
+       subtitle = "Dashed line = 50% (random chance)",
+       x = "Prediction Type",
+       y = "Mean Accuracy") +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_blank(),
+  axis.ticks.x = element_blank()
+)
+```
+```{r}
+accuracy_ci <- accuracy_ci %>%
+  mutate(significant = lower > 0.5)
+ggplot(accuracy_ci,
+       aes(x = reorder(Prediction_Type, mean_accuracy),
+           y = mean_accuracy,
+           color = significant)) +
+  geom_point(size = 3) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_text(aes(label = paste0("n=", n)),
+            hjust = -0.2,
+            size = 3) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_flip() +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Prediction Accuracy by Type (95% CI)",
+       subtitle = "Green = Significantly Above Chance",
+       x = "Prediction Type",
+       y = "Mean Accuracy") +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_blank(),
+  axis.ticks.x = element_blank()
+)
+```
+
+
+
+
+
+
+
+Confidence interval structural display options:
+Option 1:
+```{r}
+ggplot(accuracy_ci,
+       aes(x = Prediction_Type,
+           y = mean_accuracy)) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_flip() +
+  facet_wrap(~ Category, scales = "free_y") +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(x = NULL) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank()
+  )
+```
+
+
+Option 2:
+```{r}
+ggplot(accuracy_ci,
+       aes(y = reorder(Prediction_Type, mean_accuracy),
+           x = mean_accuracy)) +
+  geom_segment(aes(x = lower, xend = upper,
+                   yend = Prediction_Type),
+               size = 1) +
+  geom_point(size = 3) +
+  geom_vline(xintercept = 0.5, linetype = "dashed") +
+  coord_cartesian(xlim = c(0, 1)) +
+  labs(title = "Prediction Accuracy (95% CI)",
+       x = "Accuracy",
+       y = "") +
+  theme_minimal() +
+theme(axis.text.y = element_text(size = 7))
+```
+Option 3:
+```{r}
+ggplot(accuracy_ci,
+       aes(x = 1,
+           y = reorder(Prediction_Type, mean_accuracy),
+           fill = mean_accuracy)) +
+  geom_tile() +
+  scale_fill_gradient(low = "red", high = "green") +
+  labs(title = "Prediction Accuracy Heatmap",
+       x = "",
+       y = "",
+       fill = "Accuracy") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank())
+```
+
+Option 4.1:
+```{r}
+ggplot(accuracy_ci,
+       aes(x = reorder(Prediction_Type, mean_accuracy),
+           y = mean_accuracy)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_flip() +
+  coord_cartesian(ylim = c(0, 1)) +
+  labs(title = "Prediction Accuracy by Type",
+       x = "",
+       y = "Accuracy") +
+  theme_minimal() +
+  theme(
+  axis.text.x = element_blank(),
+  axis.ticks.x = element_blank()
+)
+```
+
+Option 4.2:
+```{r}
+accuracy_ci <- accuracy_ci %>%
+  arrange(mean_accuracy) %>%
+  mutate(Prediction_Type = factor(Prediction_Type,
+                                  levels = Prediction_Type))
+accuracy_ci$Prediction_Type <-
+  stringr::str_wrap(as.character(accuracy_ci$Prediction_Type), width = 25)
+ggplot(accuracy_ci,
+       aes(x = Prediction_Type,
+           y = mean_accuracy)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = lower, ymax = upper),
+                width = 0.2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed") +
+  coord_flip() +
+  coord_cartesian(ylim = c(0, 1)) +
+  theme_minimal()
+```
+
