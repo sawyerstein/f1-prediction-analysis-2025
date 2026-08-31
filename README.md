@@ -40,7 +40,7 @@ The project included:
 
 - [View the R Markdown source code](f1-prediction-analysis.Rmd)
 - `bonafide_predictions.csv` — dataset used in the analysis
-- `f1-prediction-analysis.html` — rendered interactive analysis
+- [View the interactive HTML analysis](https://sawyerstein.github.io/f1-prediction-analysis-2025/f1-prediction-analysis.html)
 - [View the PDF analysis](f1-prediction-analysis.pdf)
 ## Author
 
